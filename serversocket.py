@@ -33,6 +33,9 @@ for key in ip_dict:
 last_msg_s1 = '' # stores the last message received (Sensor 1)
 last_msg_s2 = '' # stores the last message received (Sensor 2)
 new_data = False # stores if the values were sent to the display
+new_data2 = False # stores if the values were sent to the actors
+
+humidity_standard = 50 # the standard humidity value, actors will put water on it if it's below
 
 # Connection accepting thread, accepts all incoming connections (starts a handle_client thread).
 def accept_incoming_connections():
@@ -43,7 +46,7 @@ def accept_incoming_connections():
 
 # Handles the connection to a single client.	
 def handle_client(client, client_address):
-	global last_msg_s1, last_msg_s2, new_data
+	global last_msg_s1, last_msg_s2, new_data, new_data2
 	try:
 		if ip_dict[client_address[0]].startswith('Sensor'): # check if device is a sensor client
 			conn = sqlite3.connect('/var/www/html/database/sensordata.db') # connects to database
@@ -62,6 +65,7 @@ def handle_client(client, client_address):
 						else:
 							last_msg_s2 = str(msg)
 						new_data = True
+						new_data2 = True
 						c.execute("INSERT INTO sensorreadings(humidity, date, time, device) values(%s, date('now'), time('now'), \"%s\")" % (msg, ip_dict[client_address[0]])) # inserts data into database
 						conn.commit() # and commits
 		elif ip_dict[client_address[0]] == 'Display': # check if device is the display
@@ -70,6 +74,15 @@ def handle_client(client, client_address):
 				new_data = False
 				while not new_data: # idling while no new data is received
 					sleep(1)
+		elif ip_dict[client_address[0]].startswith('Actor'): # check if device is an actor client
+			while True:
+				while not new_data2: # idling while no new data is received
+					sleep(1)
+				if last_msg_s1:
+					client.send(b'%s(1)' % (b'open_gate' if float(last_msg_s1) < humidity_standard else b'close_gate'))
+				if last_msg_s2:
+					client.send(b'%s(2)' % (b'open_gate' if float(last_msg_s2) < humidity_standard else b'close_gate'))
+				new_data2 = False
 	except (ConnectionResetError, OSError) as e:
 		pass
 
